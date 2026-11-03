@@ -1,0 +1,23 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info/
+.pytest_cache/
+
+# Virtual environments
+.venv/
+
+# Chapter splitter outputs
+split_chapters/
+output_chapters/
+
+# Temporary test audio
+*.wav
+*.mp3
+
+# OS files
+.DS_Store
+Thumbs.db

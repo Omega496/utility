@@ -1,0 +1,12 @@
+# Generated chapter output folders
+split_chapters/
+output_chapters/
+*.pdf
+
+# Python cache & virtual environments
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.DS_Store
