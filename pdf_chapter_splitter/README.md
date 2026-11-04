@@ -20,7 +20,8 @@ A Python utility for splitting book PDFs into individual chapter files using [Py
 ## Installation
 
 ```bash
-pip install -r requirements.txt
+uv venv 
+uv sync
 ```
 
 ---

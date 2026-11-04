@@ -32,11 +32,12 @@ From the root of the repository:
 uv sync --all-packages
 ```
 
-### 3. Activate the environment (optional)
+### 3. Expose CLI commands globally (optional)
+Run the setup script once to link all commands into your `~/.local/bin`:
 ```bash
-source .venv/bin/activate
+./setup-cli.sh
 ```
-*(Alternatively, prefix any command with `uv run <command>`, e.g., `uv run kaggle_clean .`)*
+Now commands like `make-pdf`, `make-audio`, `kaggle-clean`, and `split-chapters` will work directly from anywhere in your terminal without needing to activate `.venv`.
 
 ---
 

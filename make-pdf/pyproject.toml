@@ -11,6 +11,8 @@ dependencies = [
 ]
 
 [project.scripts]
+make-pdf = "pdf_compiler.cli:main"
+make_pdf = "pdf_compiler.cli:main"
 image_to_pdf = "pdf_compiler.cli:main"
 image-to-pdf = "pdf_compiler.cli:main"
 pdf-compiler = "pdf_compiler.cli:main"

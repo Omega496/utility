@@ -13,6 +13,7 @@ dependencies = []
 
 [project.scripts]
 kaggle_clean = "kaggle_clean.cli:main"
+kaggle-clean = "kaggle_clean.cli:main"
 kagle_clean = "kaggle_clean.cli:main"
 
 [tool.setuptools.packages.find]
