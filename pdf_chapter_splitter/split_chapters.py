@@ -32,7 +32,7 @@ try:
     import fitz  # PyMuPDF
 except ImportError:
     fitz = None
-
+import pymupdf
 
 def kaggle_slugify(text: str, delimiter: str = "_") -> str:
     """
@@ -120,6 +120,46 @@ def extract_chapters_from_bookmarks(
     return chapter_names, chapter_ranges
 
 
+def normalize_ranges(
+    chapter_ranges: List,
+    chapter_names: List[str],
+    total_pages: int,
+    page_offset: int,
+) -> List[Tuple[int, int]]:
+    """
+    Normalizes chapter_ranges so it accepts BOTH:
+      1. List of (start, end) tuples: [(1, 10), (11, 25), ...]
+      2. Simple list of start page numbers: [1, 11, 26, 51, ...]
+         Where each chapter ends right before the next starts, and the
+         final chapter ends at the end of the book.
+    """
+    if not chapter_ranges:
+        return []
+
+    # If already a list of tuples or lists: [(start, end), ...]
+    if isinstance(chapter_ranges[0], (tuple, list)):
+        return [(int(r[0]), int(r[1])) for r in chapter_ranges]
+
+    # Otherwise, it is a list of starting page integers: [3, 21, 43, ...]
+    start_pages = [int(p) for p in chapter_ranges]
+    normalized = []
+    num_names = len(chapter_names)
+    max_printed_page = total_pages - page_offset
+
+    for i in range(num_names):
+        if i >= len(start_pages):
+            break
+        start = start_pages[i]
+        # Next chapter's start page minus 1, or end of the document
+        if i + 1 < len(start_pages):
+            end = max(start, start_pages[i + 1] - 1)
+        else:
+            end = max_printed_page
+        normalized.append((start, end))
+
+    return normalized
+
+
 def split_pdf_by_chapters(
     pdf_path: str,
     chapter_names: Optional[List[str]] = None,
@@ -178,6 +218,14 @@ def split_pdf_by_chapters(
         print("Error: No chapter names or page ranges provided.", file=sys.stderr)
         doc.close()
         return
+
+    # Normalize ranges in case user passed [start1, start2, start3, ...]
+    chapter_ranges = normalize_ranges(
+        chapter_ranges=chapter_ranges,
+        chapter_names=chapter_names,
+        total_pages=total_pages,
+        page_offset=page_offset,
+    )
 
     if len(chapter_names) != len(chapter_ranges):
         print(
@@ -277,7 +325,7 @@ def split_pdf_by_chapters(
 #    Examples:
 #      PDF_PATH = "my_book.pdf"
 #      PDF_PATH = "/home/heathcliff/Downloads/Deep Learning by Ian Goodfellow.pdf"
-PDF_PATH = "my_book.pdf"
+PDF_PATH = "/home/heathcliff/Documents/utility/pdf_chapter_splitter/Introduction to Gravitational Lensing  With Python Examples (Massimo Meneghetti) (z-library.sk, 1lib.sk, z-lib.sk).pdf"
 
 # 2. BOOK NAME (Optional):
 #    Leave this empty ("") to AUTOMATICALLY detect the book name from the PDF's filename!
@@ -295,26 +343,24 @@ BOOKMARK_LEVEL = 1    # 1 = Top-level chapters, 2 = Include sub-sections
 # 5. PAGE OFFSET (Only used in manual mode):
 #    Set this if your PDF viewer page number is ahead of the printed book page number.
 #    (e.g., if printed page 1 starts on PDF viewer page 11, set PAGE_OFFSET = 10)
-PAGE_OFFSET = 0
+PAGE_OFFSET = 11
 
 # 6. Manual Chapter Names (used if USE_BOOKMARKS = False)
 DEFAULT_CHAPTERS = [
-    "Getting Started",
-    "Data Structures",
-    "Algorithms in Practice",
-    "Linear Models & Regression",
-    "Neural Networks & Deep Learning",
+    "A Brief History of Gravitational Lensing",  #[cite: 1]
+    "Deflection of Light",  #[cite: 1]
+    "The General Lens",  #[cite: 1]
+    "Microlenses",  #[cite: 2]
+    "Extended Lenses",  #[cite: 3]
+    "Lensing by Galaxies and Clusters",  #[cite: 3]
+    "Lensing by Large-Scale Structure",  #[cite: 4]
+    "Python Mini-Tutorial",  #[cite: 5]
+    "Cosmology Primer",  #[cite: 5]
 ]
 
 # 7. Manual Chapter Page Ranges [(start, end), ...] (used if USE_BOOKMARKS = False)
 #    PAGE_OFFSET is added automatically to each range.
-CHAPTER_RANGES = [
-    (1, 10),
-    (11, 25),
-    (26, 50),
-    (51, 80),
-    (81, 120),
-]
+CHAPTER_RANGES = [3, 21, 43, 103, 179, 255, 331, 371, 381]
 
 # 8. Customization Flags (Kaggle Dataset Formatting)
 ADD_CHAPTER_NUMBER = True       # Adds 'chapter_<num>_'
