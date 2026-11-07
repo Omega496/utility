@@ -11,3 +11,8 @@ wheels/
 
 # Editor directories
 .obsidian/
+
+# Temporary test audio
+*.wav
+*.mp3
+*.opus

@@ -11,6 +11,8 @@ with CUDA GPU acceleration, synthesizes the audio, and writes
 import json
 import logging
 import os
+import shutil
+import subprocess
 import sys
 import time
 import warnings
@@ -22,6 +24,7 @@ warnings.filterwarnings("ignore")
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 os.environ["HF_HUB_DISABLE_IMPLICIT_TOKEN"] = "1"
 os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "0"
+os.environ["HF_TOKEN"] = ""  # Prevent querying Colab userdata secrets vault (prevents 10s hang)
 
 logging.getLogger("transformers").setLevel(logging.ERROR)
 logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
@@ -75,7 +78,8 @@ def run_worker():
     voice = job.get("voice", "af_heart")
     speed = float(job.get("speed", 1.0))
     pause_between_paragraphs = float(job.get("pause_between_paragraphs", 0.25))
-    output_path = Path(job.get("output_path", "/content/make_audio_output.wav"))
+    output_path = Path(job.get("output_path", "/content/make_audio_output.opus"))
+    bitrate = str(job.get("bitrate", "24k"))
     verbose = job.get("verbose", False)
 
     if not text:
@@ -107,12 +111,11 @@ def run_worker():
     start_synth = time.time()
 
     for p_idx, paragraph in enumerate(paragraphs, 1):
-        if verbose:
-            clean_snippet = paragraph.replace("\n", " ").strip()
-            if len(clean_snippet) > 60:
-                clean_snippet = clean_snippet[:57] + "..."
-            pct = (p_idx / total_paras) * 100
-            print(f"[colab-worker] [{pct:5.1f}%] [{p_idx:02d}/{total_paras:02d}] Generating: \"{clean_snippet}\"")
+        clean_snippet = paragraph.replace("\n", " ").strip()
+        if len(clean_snippet) > 60:
+            clean_snippet = clean_snippet[:57] + "..."
+        pct = (p_idx / total_paras) * 100
+        print(f"[colab-worker] [{pct:5.1f}%] [{p_idx:02d}/{total_paras:02d}] Generating: \"{clean_snippet}\"", flush=True)
 
         with suppress_fd():
             generator = pipeline(
@@ -145,14 +148,79 @@ def run_worker():
     rtf = elapsed / duration_sec if duration_sec > 0 else 0
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    with suppress_fd():
-        sf.write(str(output_path), final_audio, sample_rate)
+    suffix = output_path.suffix.lower()
+    if not suffix:
+        output_path = output_path.with_suffix(".opus")
+        suffix = ".opus"
+
+    if suffix == ".opus":
+        temp_wav = output_path.with_suffix(".temp.wav")
+        with suppress_fd():
+            sf.write(str(temp_wav), final_audio, sample_rate)
+        encoded = False
+        if shutil.which("ffmpeg"):
+            try:
+                subprocess.run(
+                    [
+                        "ffmpeg", "-y",
+                        "-i", str(temp_wav),
+                        "-c:a", "libopus",
+                        "-b:a", bitrate,
+                        "-vbr", "on",
+                        "-application", "voip",
+                        str(output_path),
+                    ],
+                    check=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                encoded = True
+            except (subprocess.SubprocessError, FileNotFoundError):
+                encoded = False
+            finally:
+                temp_wav.unlink(missing_ok=True)
+
+        if not encoded:
+            try:
+                with suppress_fd():
+                    sf.write(str(output_path), final_audio, sample_rate, format="OGG", subtype="OPUS")
+            except Exception:
+                temp_wav.rename(output_path.with_suffix(".wav"))
+                output_path = output_path.with_suffix(".wav")
+
+    elif suffix == ".mp3":
+        temp_wav = output_path.with_suffix(".temp.wav")
+        with suppress_fd():
+            sf.write(str(temp_wav), final_audio, sample_rate)
+        if shutil.which("ffmpeg"):
+            try:
+                subprocess.run(
+                    ["ffmpeg", "-y", "-i", str(temp_wav), "-b:a", "192k", str(output_path)],
+                    check=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                temp_wav.unlink(missing_ok=True)
+            except (subprocess.SubprocessError, FileNotFoundError):
+                temp_wav.rename(output_path.with_suffix(".wav"))
+                output_path = output_path.with_suffix(".wav")
+        else:
+            temp_wav.rename(output_path.with_suffix(".wav"))
+            output_path = output_path.with_suffix(".wav")
+
+    elif suffix == ".wav":
+        with suppress_fd():
+            sf.write(str(output_path), final_audio, sample_rate)
+
+    else:
+        with suppress_fd():
+            sf.write(str(output_path), final_audio, sample_rate)
 
     if verbose:
         print(f"[colab-worker] Synthesis completed in {elapsed:.2f}s (audio duration: {duration_sec:.1f}s, RTF: {rtf:.3f})")
         print(f"[colab-worker] Audio saved to: {output_path}")
 
-    print("[colab-worker] SUCCESS")
+    print("[colab-worker] SUCCESS", flush=True)
 
 
 if __name__ == "__main__":

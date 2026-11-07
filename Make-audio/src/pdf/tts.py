@@ -8,6 +8,7 @@ and paragraph pacing.
 
 import logging
 import os
+import shutil
 import subprocess
 import warnings
 from contextlib import contextmanager
@@ -141,9 +142,11 @@ class KokoroTTS:
         speed: float = 1.0,
         pause_between_paragraphs: float = 0.25,
         progress_callback: Optional[Callable[[int, int, str], None]] = None,
+        bitrate: str = "24k",
     ) -> Path:
         """
-        Synthesize text and save it to an audio file (.wav or .mp3).
+        Synthesize text and save it to an audio file (.opus, .wav, or .mp3).
+        Defaults to 24k Opus audio for optimal quality and ultra-compact file size.
         """
         output_path = Path(output_path).resolve()
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -159,10 +162,47 @@ class KokoroTTS:
         sample_rate = 24000
         suffix = output_path.suffix.lower()
 
-        if suffix in [".wav", ""]:
-            final_path = output_path.with_suffix(".wav")
-            sf.write(str(final_path), audio_data, sample_rate)
-            return final_path
+        # Default to .opus if no extension was provided
+        if not suffix:
+            output_path = output_path.with_suffix(".opus")
+            suffix = ".opus"
+
+        if suffix == ".opus":
+            temp_wav = output_path.with_suffix(".temp.wav")
+            sf.write(str(temp_wav), audio_data, sample_rate)
+            encoded = False
+            if shutil.which("ffmpeg"):
+                try:
+                    subprocess.run(
+                        [
+                            "ffmpeg", "-y",
+                            "-i", str(temp_wav),
+                            "-c:a", "libopus",
+                            "-b:a", str(bitrate),
+                            "-vbr", "on",
+                            "-application", "voip",
+                            str(output_path),
+                        ],
+                        check=True,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                    encoded = True
+                except (subprocess.SubprocessError, FileNotFoundError):
+                    encoded = False
+                finally:
+                    temp_wav.unlink(missing_ok=True)
+
+            if not encoded:
+                # Fallback to soundfile OGG OPUS container
+                try:
+                    sf.write(str(output_path), audio_data, sample_rate, format="OGG", subtype="OPUS")
+                except Exception:
+                    # If libsndfile lacks opus support, keep wav
+                    temp_wav.rename(output_path.with_suffix(".wav"))
+                    return output_path.with_suffix(".wav")
+            return output_path
+
         elif suffix == ".mp3":
             temp_wav = output_path.with_suffix(".temp.wav")
             sf.write(str(temp_wav), audio_data, sample_rate)
@@ -178,6 +218,11 @@ class KokoroTTS:
             except (subprocess.SubprocessError, FileNotFoundError):
                 temp_wav.rename(output_path.with_suffix(".wav"))
                 return output_path.with_suffix(".wav")
+
+        elif suffix == ".wav":
+            sf.write(str(output_path), audio_data, sample_rate)
+            return output_path
+
         else:
             sf.write(str(output_path), audio_data, sample_rate)
             return output_path

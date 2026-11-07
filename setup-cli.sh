@@ -15,7 +15,8 @@ COMMANDS=(
   "make-pdf" "make_pdf" "image-to-pdf" "image_to_pdf"
   "pdf-compiler" "txt-to-pdf" "txt_to_pdf" "md-to-pdf" "md_to_pdf"
   # Make-audio
-  "make-audio" "make_audio" "md-to-audio" "clean-md" "clean_md"
+  "make-audio" "make_audio" "make-opus" "make_opus" "txt-to-opus" "txt_to_opus"
+  "md-to-audio" "clean-md" "clean_md"
   "bengali-clean" "bengali_clean"
   # kaggle_clean
   "kaggle-clean" "kaggle_clean" "kagle_clean"

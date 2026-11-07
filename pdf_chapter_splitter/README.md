@@ -63,22 +63,24 @@ python3 split_chapters.py
 
 ### Auto-split using embedded bookmarks:
 ```bash
-python3 split_chapters.py --pdf "/path/to/book.pdf" --auto-bookmarks
+uv run split_chapters.py --pdf "/path/to/book.pdf" --auto-bookmarks
+uv run split-chapters --pdf '/path/to/book.pdf' --auto-bookmarks --bookmark-level 1
+uv run split-chapters --pdf '/path/to/book.pdf' --auto-bookmarks --bookmark-level 2
 ```
 
 ### Manual split with a +12 page offset:
 ```bash
-python3 split_chapters.py --pdf "/path/to/book.pdf" --offset 12
+uv run split_chapters.py --pdf "/path/to/book.pdf" --offset 12
 ```
 
 ### Save to custom folder with hyphen separators (kebab-case):
 ```bash
-python3 split_chapters.py --pdf "/path/to/book.pdf" --auto-bookmarks --out "kaggle_dataset" --hyphen
+uv run split_chapters.py --pdf "/path/to/book.pdf" --auto-bookmarks --out "kaggle_dataset" --hyphen
 ```
 
 ### Chapter numbers only (no book title prefix):
 ```bash
-python3 split_chapters.py --pdf "/path/to/book.pdf" --auto-bookmarks --no-book-name
+uv run split_chapters.py --pdf "/path/to/book.pdf" --auto-bookmarks --no-book-name
 ```
 
 ---

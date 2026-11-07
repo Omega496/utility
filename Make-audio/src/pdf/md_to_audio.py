@@ -77,7 +77,18 @@ def parse_args():
         "-o",
         "--output",
         default=None,
-        help="Output audio filepath (.wav or .mp3) for a single file, or destination folder for batch conversion.",
+        help="Output audio filepath (.opus, .wav, or .mp3) for a single file, or destination folder for batch conversion (default: .opus at 24k).",
+    )
+    parser.add_argument(
+        "--format",
+        choices=["opus", "wav", "mp3"],
+        default="opus",
+        help="Default audio output format (default: opus at 24k).",
+    )
+    parser.add_argument(
+        "--bitrate",
+        default="24k",
+        help="Bitrate for Opus audio encoding (default: 24k).",
     )
     parser.add_argument(
         "-v",
@@ -147,8 +158,14 @@ def parse_args():
     parser.add_argument(
         "--fallback-local",
         action="store_true",
-        default=False,
-        help="Automatically fall back to local hardware synthesis if Google Colab fails or is offline",
+        default=True,
+        help="Automatically fall back to local hardware synthesis if Google Colab fails or is offline (default: True)",
+    )
+    parser.add_argument(
+        "--no-fallback-local",
+        action="store_false",
+        dest="fallback_local",
+        help="Do not automatically fall back to local hardware synthesis if Google Colab fails",
     )
     parser.add_argument(
         "--keep-display-math",
@@ -214,11 +231,11 @@ def _run_local_synthesis(args, cleaned_text: str, output_audio_path: Path) -> Pa
     """Run audio synthesis locally using PyTorch and KokoroTTS."""
     tts = KokoroTTS(lang_code="a", device=args.device)
 
-    progress_callback = None
+    paragraphs = [p for p in cleaned_text.split("\n\n") if p.strip()]
+    total_paras = len(paragraphs)
+    word_count = sum(len(p.split()) for p in paragraphs)
+
     if args.verbose:
-        paragraphs = [p for p in cleaned_text.split("\n\n") if p.strip()]
-        total_paras = len(paragraphs)
-        word_count = sum(len(p.split()) for p in paragraphs)
         print(f"Processing {total_paras} paragraphs ({word_count} words) on {tts.device.upper()}...")
 
         def _progress(current: int, total: int, snippet: str):
@@ -230,6 +247,16 @@ def _run_local_synthesis(args, cleaned_text: str, output_audio_path: Path) -> Pa
             sys.stdout.flush()
 
         progress_callback = _progress
+    else:
+        def _progress_simple(current: int, total: int, snippet: str):
+            pct = (current / total) * 100
+            clean_snippet = snippet.replace("\n", " ").strip()
+            if len(clean_snippet) > 40:
+                clean_snippet = clean_snippet[:37] + "..."
+            sys.stdout.write(f"\r[Local] [{pct:5.1f}%] [{current:02d}/{total:02d}] Generating: \"{clean_snippet}\"")
+            sys.stdout.flush()
+
+        progress_callback = _progress_simple
 
     final_path = tts.convert_to_audio_file(
         text=cleaned_text,
@@ -237,10 +264,11 @@ def _run_local_synthesis(args, cleaned_text: str, output_audio_path: Path) -> Pa
         voice=args.voice,
         speed=args.speed,
         progress_callback=progress_callback,
+        bitrate=getattr(args, "bitrate", "24k"),
     )
 
-    if args.verbose:
-        print()
+    sys.stdout.write("\n")
+    sys.stdout.flush()
 
     return final_path
 
@@ -341,11 +369,16 @@ def main():
                     return
 
                 # Create temporary audio file
+                default_ext = f".{args.format.lstrip('.')}"
                 if args.output:
                     output_audio_path = Path(args.output).resolve()
+                    if output_audio_path.is_dir():
+                        output_audio_path = output_audio_path / f"{temp_doc_path.stem}{default_ext}"
+                    elif not output_audio_path.suffix:
+                        output_audio_path = output_audio_path.with_suffix(default_ext)
                     is_audio_temp = False
                 else:
-                    tmp = tempfile.NamedTemporaryFile(suffix=f"_{temp_doc_path.stem}.wav", delete=False)
+                    tmp = tempfile.NamedTemporaryFile(suffix=f"_{temp_doc_path.stem}{default_ext}", delete=False)
                     output_audio_path = Path(tmp.name)
                     tmp.close()
                     temp_audio_file = output_audio_path
@@ -363,6 +396,7 @@ def main():
                             voice=args.voice,
                             speed=args.speed,
                             stop_session_after=False,
+                            bitrate=getattr(args, "bitrate", "24k"),
                         )
                     except Exception as e:
                         if args.fallback_local:
@@ -424,12 +458,17 @@ def main():
                 print("=" * 50)
                 return
 
+            default_ext = f".{args.format.lstrip('.')}"
             temp_audio_file = None
             if args.output:
                 output_audio_path = Path(args.output).resolve()
+                if output_audio_path.is_dir():
+                    output_audio_path = output_audio_path / f"text_output{default_ext}"
+                elif not output_audio_path.suffix:
+                    output_audio_path = output_audio_path.with_suffix(default_ext)
                 is_temporary = False
             else:
-                tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+                tmp = tempfile.NamedTemporaryFile(suffix=default_ext, delete=False)
                 output_audio_path = Path(tmp.name)
                 tmp.close()
                 temp_audio_file = output_audio_path
@@ -449,6 +488,7 @@ def main():
                             voice=args.voice,
                             speed=args.speed,
                             stop_session_after=False,
+                            bitrate=getattr(args, "bitrate", "24k"),
                         )
                     except Exception as e:
                         if args.fallback_local:
@@ -541,6 +581,7 @@ def main():
             temp_audio_file = None
             is_temporary = False
 
+            default_ext = f".{args.format.lstrip('.')}"
             if args.output:
                 out_path = Path(args.output).resolve()
                 if is_batch:
@@ -548,12 +589,18 @@ def main():
                         output_audio_path = out_path.parent / f"{file_path.stem}{out_path.suffix}"
                     else:
                         out_path.mkdir(parents=True, exist_ok=True)
-                        output_audio_path = out_path / f"{file_path.stem}.wav"
+                        output_audio_path = out_path / f"{file_path.stem}{default_ext}"
                 else:
-                    output_audio_path = out_path
+                    if out_path.is_dir():
+                        out_path.mkdir(parents=True, exist_ok=True)
+                        output_audio_path = out_path / f"{file_path.stem}{default_ext}"
+                    elif out_path.suffix:
+                        output_audio_path = out_path
+                    else:
+                        output_audio_path = out_path.with_suffix(default_ext)
             elif args.play:
                 # With --play and no explicit -o, synthesize to a temporary file and delete after playback or interruption
-                tmp = tempfile.NamedTemporaryFile(suffix=f"_{file_path.stem}.wav", delete=False)
+                tmp = tempfile.NamedTemporaryFile(suffix=f"_{file_path.stem}{default_ext}", delete=False)
                 output_audio_path = Path(tmp.name)
                 tmp.close()
                 temp_audio_file = output_audio_path
@@ -561,7 +608,7 @@ def main():
                 atexit.register(lambda p=output_audio_path: p.unlink(missing_ok=True))
             else:
                 suffix_tag = f"_p{args.pages}" if (file_path.suffix.lower() == ".pdf" and args.pages) else ""
-                output_audio_path = Path.cwd() / f"{file_path.stem}{suffix_tag}.wav"
+                output_audio_path = Path.cwd() / f"{file_path.stem}{suffix_tag}{default_ext}"
 
             try:
                 # Synthesize audio via chosen engine
@@ -573,6 +620,7 @@ def main():
                             voice=args.voice,
                             speed=args.speed,
                             stop_session_after=False,
+                            bitrate=getattr(args, "bitrate", "24k"),
                         )
                     except Exception as e:
                         if args.fallback_local:

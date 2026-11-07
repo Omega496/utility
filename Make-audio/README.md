@@ -190,7 +190,10 @@ options:
   --temp [TEMP]         Open scratchpad in nano (default: temp.md), convert, play, and auto-delete all files on exit
   --play                Play audio interactively in the terminal (cleans up temp file if -o is omitted)
   --no-play             Do not automatically play audio when using -t/--text
-  -o, --output OUTPUT   Output audio filepath (.wav or .mp3) for a single file, or destination folder for batch conversion
+  -o, --output OUTPUT   Output audio filepath (.opus, .wav, or .mp3) for a single file, or destination folder for batch conversion (default: .opus at 24k)
+  --format {opus,wav,mp3}
+                        Default audio output format (default: opus)
+  --bitrate BITRATE     Bitrate for Opus audio encoding (default: 24k)
   -v, --voice VOICE     Kokoro voice pack (default: af_heart)
   -s, --speed SPEED     Speaking speed multiplier (default: 1.0)
   -p, --pages PAGES     For PDF: page range (e.g. '1', '1-3', '1,3,5')
@@ -307,6 +310,61 @@ bengali_clean notes.md -o cleaned_notes.md
 
 ---
 
+## 🎧 Universal Audio & Google Docs TTS to Opus Converter (`make_opus` / `txt-to-opus`)
+
+`make_opus` is a multi-threaded universal converter that takes **any audio file** (`.mp3`, `.wav`, `.m4a`, `.aac`, `.flac`, `.ogg`, `.wma`, etc.) or **Google Docs TTS network response files** (`.txt` containing `generate_tts_response`) and converts them into ultra-compact, high-clarity **24 kHz, 24 kbps Opus audio** (`.opus`).
+
+```bash
+# Convert a single audio file or Google Docs response:
+make_opus audio.mp3
+make_opus chapter_6_i.txt
+
+# Convert all audio and Google Docs .txt files in the current folder:
+make_opus .
+
+# Convert all files in the current folder and subdirectories recursively:
+make_opus -r
+
+# Convert a specific folder recursively:
+make_opus /path/to/folder -r
+
+# Google Docs TTS conversion alias:
+txt-to-opus .
+
+# Keep original files instead of auto-deleting them:
+make_opus audio.mp3 --keep
+make_opus . --keep
+
+# Inspect audio file properties (codecs, original sample rate, bitrate, duration):
+make_opus -i file.opus
+make_opus -i /path/to/folder
+```
+
+### `make_opus` Options
+
+```text
+usage: make_opus [-h] [-r] [-o OUTPUT] [-b BITRATE] [--sr SR] [-j THREADS]
+                 [-k] [-i]
+                 [target]
+
+options:
+  target                Audio file or folder to convert (default: current directory '.')
+  -r, --recursive       Search and convert files in subdirectories recursively
+  -o OUTPUT, --output OUTPUT
+                        Output destination file or directory
+  -b BITRATE, --bitrate BITRATE
+                        Target Opus bitrate (default: 24k)
+  --sr SR, --sample-rate SR
+                        Target sample rate in Hz (default: 24000 Hz / 24 kHz)
+  -j THREADS, --threads THREADS
+                        Number of concurrent conversion threads (default: CPU cores)
+  -k, --keep, --keep-source
+                        Keep original source files (by default, original files are automatically deleted after successful conversion)
+  -i, --info            Inspect and display detailed audio properties without converting
+```
+
+---
+
 ## ⏪ Reverting / Rollback to Pristine Local Baseline
 
 A permanent Git baseline was saved before making any Colab changes. If you ever decide you prefer the original 100% local project state, you can revert completely with:
@@ -324,10 +382,12 @@ git reset --hard v0.1.0-local-baseline
 ## 📂 Project Structure
 
 - [`INSTALL.md`](INSTALL.md): Comprehensive installation guide and copy-paste prompt for AI agents.
-- [`clean_md.py`](file:///home/omega496/make_audio/clean_md.py): Root CLI launcher script for markdown cleaning.
-- [`bengali_clean.py`](file:///home/omega496/make_audio/bengali_clean.py): Root CLI launcher script for Bengali markdown cleaning.
-- [`md_to_audio.py`](file:///home/omega496/make_audio/md_to_audio.py): Root CLI launcher script for audio synthesis.
-- [`src/pdf/clean_md.py`](file:///home/omega496/make_audio/src/pdf/clean_md.py): Markdown cleaner CLI tool and batch processor.
+- [`clean_md.py`](file:///home/heathcliff/Documents/utility/Make-audio/clean_md.py): Root CLI launcher script for markdown cleaning.
+- [`bengali_clean.py`](file:///home/heathcliff/Documents/utility/Make-audio/bengali_clean.py): Root CLI launcher script for Bengali markdown cleaning.
+- [`md_to_audio.py`](file:///home/heathcliff/Documents/utility/Make-audio/md_to_audio.py): Root CLI launcher script for audio synthesis.
+- [`make_opus.py`](file:///home/heathcliff/Documents/utility/Make-audio/make_opus.py): Root CLI launcher script for universal Opus & Google Docs TTS conversion.
+- [`src/pdf/make_opus.py`](file:///home/heathcliff/Documents/utility/Make-audio/src/pdf/make_opus.py): Universal multi-threaded 24k Opus & Google Docs TTS engine.
+- [`src/pdf/clean_md.py`](file:///home/heathcliff/Documents/utility/Make-audio/src/pdf/clean_md.py): Markdown cleaner CLI tool and batch processor.
 - [`src/pdf/bengali_clean.py`](file:///home/omega496/make_audio/src/pdf/bengali_clean.py): Dedicated Bengali markdown cleaner CLI tool.
 - [`src/pdf/cleaner.py`](file:///home/omega496/make_audio/src/pdf/cleaner.py): Markdown, LaTeX, and formula cleaning engine (English and Bengali).
 - [`src/pdf/md_to_audio.py`](file:///home/omega496/make_audio/src/pdf/md_to_audio.py): Main CLI entry point, batch file collector, and engine dispatcher.

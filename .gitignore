@@ -17,6 +17,7 @@ output_chapters/
 # Temporary test audio
 *.wav
 *.mp3
+*.opus
 
 # OS files
 .DS_Store
