@@ -137,7 +137,7 @@ class TestClean(unittest.TestCase):
 
             buf = io.StringIO()
             with redirect_stdout(buf):
-                exit_code = main([str(test_file), "--no-color"])
+                exit_code = main([str(test_file), "-s", "--no-color"])
 
             self.assertEqual(exit_code, 0)
             self.assertFalse(test_file.exists())
@@ -152,7 +152,8 @@ class TestClean(unittest.TestCase):
 
             buf = io.StringIO()
             with redirect_stdout(buf):
-                exit_code = main([str(test_file), "-k", "--no-color"])
+                # By default, clean runs in Kaggle mode
+                exit_code = main([str(test_file), "--no-color"])
 
             self.assertEqual(exit_code, 0)
             self.assertFalse(test_file.exists())

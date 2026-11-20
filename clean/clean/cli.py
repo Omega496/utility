@@ -59,12 +59,13 @@ def main(argv: Optional[List[str]] = None) -> int:
     if argv is None:
         argv = sys.argv[1:]
 
-    # Auto-detect default mode based on command invoked
+    # Auto-detect default mode based on command invoked:
+    # Default is KAGGLE. If command contains 'sync' or 'mobile', default to SYNC.
     invoked_name = Path(sys.argv[0]).name.lower()
     default_mode = (
-        CleanMode.KAGGLE
-        if "kaggle" in invoked_name
-        else CleanMode.SYNC
+        CleanMode.SYNC
+        if ("sync" in invoked_name or "mobile" in invoked_name)
+        else CleanMode.KAGGLE
     )
 
     parser = argparse.ArgumentParser(
@@ -72,22 +73,21 @@ def main(argv: Optional[List[str]] = None) -> int:
         description="Unified CLI tool to sanitize file and folder names for Kaggle uploads and Mobile/Syncthing sharing.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""Modes:
-  Mobile / Sync (Default):
+  Kaggle Mode (Default):
+    Strict POSIX Kaggle compliance: replaces spaces, brackets, parentheses, colons,
+    and special characters with underscores, strips accents and internal dots.
+
+  Mobile / Sync Mode (-s / -m / --sync):
     Safe cross-platform cleaning for Android & Windows: fixes colons, quotes, newlines,
     pipes, trailing spaces, and updates markdown links while keeping readable spaces.
 
-  Kaggle Mode (-k / --kaggle):
-    Strict POSIX Kaggle compliance: replaces spaces and special characters with underscores,
-    strips accents and internal dots.
-
 Examples:
-  clean                              # Clean current directory for Mobile / Syncthing
+  clean                              # Clean current directory for Kaggle upload (Default)
   clean -n                           # Dry-run preview in current directory
   clean -r                           # Clean current directory and subdirectories recursively
-  clean -k                           # Clean current directory for Kaggle upload
-  clean -k -r                        # Clean recursively for Kaggle upload
+  clean -s                           # Clean current directory for Mobile / Syncthing
+  clean -s -r                        # Clean recursively for Mobile / Syncthing
   clean path/to/folder               # Clean a specific folder
-  kaggle_clean .                     # Alias: automatically runs in Kaggle mode
 """,
     )
 
