@@ -18,8 +18,8 @@ COMMANDS=(
   "make-audio" "make_audio" "make-opus" "make_opus" "txt-to-opus" "txt_to_opus"
   "md-to-audio" "clean-md" "clean_md"
   "bengali-clean" "bengali_clean"
-  # kaggle_clean
-  "kaggle-clean" "kaggle_clean" "kagle_clean"
+  # clean (unified Kaggle & Mobile/Syncthing sanitizer)
+  "clean" "kaggle-clean" "kaggle_clean" "kagle_clean" "sync-clean" "sync_clean"
 )
 
 echo "Linking commands to $LOCAL_BIN ..."

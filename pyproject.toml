@@ -19,5 +19,5 @@ build-backend = "uv_build"
 members = [
     "make-pdf",
     "Make-audio",
-    "kaggle_clean",
+    "clean",
 ]
