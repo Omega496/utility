@@ -1,7 +1,7 @@
 [project]
 name = "pdf"
 version = "0.1.0"
-description = "Add your description here"
+description = "Unified High-Throughput Document to Audio CLI Tool with Edge-TTS, Colab, and Kokoro"
 readme = "README.md"
 authors = [
     { email = "Omega496" }
@@ -12,6 +12,7 @@ dependencies = [
     "pypdf>=6.20.1",
     "soundfile>=0.14.0",
     "en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl",
+    "edge-tts>=6.1.0",
 ]
 
 [project.scripts]

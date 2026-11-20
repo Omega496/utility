@@ -3,6 +3,7 @@ import sys
 import tempfile
 from pathlib import Path
 from unittest.mock import patch, MagicMock
+import pytest
 
 # Add src to path
 src_dir = Path(__file__).resolve().parent.parent / "src"
@@ -10,6 +11,12 @@ if str(src_dir) not in sys.path:
     sys.path.insert(0, str(src_dir))
 
 from pdf.md_to_audio import main
+
+
+@pytest.fixture(autouse=True)
+def set_local_engine(monkeypatch):
+    """Set local engine for legacy local player tests."""
+    monkeypatch.setenv("MAKE_AUDIO_ENGINE", "local")
 
 
 def test_text_temporary_cleanup():

@@ -66,6 +66,13 @@ with suppress_fd():
 
 
 def run_worker():
+    # Remove any stale output files from previous jobs before synthesis
+    for stale in Path("/content").glob("make_audio_output.*"):
+        try:
+            stale.unlink(missing_ok=True)
+        except Exception:
+            pass
+
     job_file = Path("/content/make_audio_job.json")
     if not job_file.exists():
         print(f"[colab-worker] ERROR: Job file not found at {job_file}", file=sys.stderr)
@@ -97,8 +104,12 @@ def run_worker():
             print(f"[colab-worker] GPU: {torch.cuda.get_device_name(0)}")
         print(f"[colab-worker] Initializing Kokoro pipeline (voice: {voice}, speed: {speed})...")
 
-    with suppress_fd():
-        pipeline = KPipeline(lang_code="a", repo_id="hexgrad/Kokoro-82M", device=device)
+    # Reuse pipeline across executions within the persistent kernel
+    global _GLOBAL_KOKORO_PIPELINE
+    if "_GLOBAL_KOKORO_PIPELINE" not in globals() or _GLOBAL_KOKORO_PIPELINE is None:
+        with suppress_fd():
+            _GLOBAL_KOKORO_PIPELINE = KPipeline(lang_code="a", repo_id="hexgrad/Kokoro-82M", device=device)
+    pipeline = _GLOBAL_KOKORO_PIPELINE
 
     sample_rate = 24000
     silence_samples = int(sample_rate * pause_between_paragraphs)

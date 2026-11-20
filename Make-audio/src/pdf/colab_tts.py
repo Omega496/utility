@@ -139,6 +139,8 @@ class ColabTTS:
         self.gpu = gpu if (gpu and gpu.lower() != "none") else None
         self.timeout = timeout
         self.verbose = verbose
+        self._session_verified = False
+        self._deps_installed = False
         self.worker_script = Path(__file__).resolve().parent / "colab_worker.py"
 
         if not self.worker_script.exists():
@@ -184,6 +186,9 @@ class ColabTTS:
 
     def ensure_session(self) -> None:
         """Ensure the Colab VM session is active and dependencies are installed."""
+        if self._session_verified and self.session_name:
+            return
+
         if self.is_session_active():
             print(f"[Colab] Connected to active session '{self.session_name}' ({self.gpu or 'CPU'}).")
         else:
@@ -213,9 +218,13 @@ class ColabTTS:
             print(f"[Colab] Session '{self.session_name}' ready.")
 
         self._ensure_remote_dependencies()
+        self._session_verified = True
 
     def _ensure_remote_dependencies(self) -> None:
         """Ensure kokoro, soundfile, and espeakng-loader are installed on the Colab VM."""
+        if self._deps_installed:
+            return
+
         check_proc = subprocess.run(
             ["colab", "exec", "-s", self.session_name, "--timeout", "35"],
             input="import kokoro, soundfile\n",
@@ -225,6 +234,7 @@ class ColabTTS:
         if check_proc.returncode == 0 and "error" not in check_proc.stderr.lower():
             if self.verbose:
                 print("[Colab] Remote dependencies verified.")
+            self._deps_installed = True
             return
 
         print("[Colab] Installing remote TTS dependencies (kokoro, soundfile, espeakng-loader)...")
@@ -237,6 +247,7 @@ class ColabTTS:
             err = install_proc.stderr if hasattr(install_proc, "stderr") else "Installation failed"
             raise ColabTTSError(f"Failed to install dependencies on Colab VM: {err}")
         print("[Colab] Remote dependencies installed successfully.")
+        self._deps_installed = True
 
     def convert_to_audio_file(
         self,
@@ -269,17 +280,6 @@ class ColabTTS:
             remote_output_file = "/content/make_audio_output.mp3"
         else:
             remote_output_file = "/content/make_audio_output.wav"
-
-        # Clear any stale remote output file before synthesis
-        try:
-            subprocess.run(
-                ["colab", "exec", "-s", self.session_name, "--timeout", "20"],
-                input="import os; [os.remove(f'/content/{f}') for f in os.listdir('/content') if f.startswith('make_audio_output.')]\n",
-                capture_output=True,
-                text=True,
-            )
-        except Exception:
-            pass
 
         job_data = {
             "text": text,
@@ -423,6 +423,9 @@ class ColabTTS:
 
             return output_path
 
+        except Exception:
+            self._session_verified = False
+            raise
         finally:
             # Clean up local temporary job file
             if os.path.exists(local_job_path):

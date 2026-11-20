@@ -1,0 +1,2 @@
+google-colab-cli>=0.7.5
+rich>=13.0.0

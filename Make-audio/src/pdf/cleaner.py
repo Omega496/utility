@@ -20,7 +20,7 @@ Handles:
 import html
 import re
 import unicodedata
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 
 # ---------------------------------------------------------------------------
@@ -520,8 +520,9 @@ def clean_markdown_for_tts(
     drop_code: bool = False,
     drop_diagrams: bool = False,
     strip_inline_math: bool = False,
-    code_placeholder: str = "Please refer to the code block shown in the document.",
+    code_placeholder: str = "Please refer to the code example.",
     diagram_placeholder: str = "Please refer to the diagram shown in the document.",
+    display_math_placeholder: Optional[str] = "Please refer to the equation.",
 ) -> str:
     """
     Clean markdown or text for TTS narration:
@@ -586,11 +587,12 @@ def clean_markdown_for_tts(
 
     # 9. Handle Display Math ($$...$$ and \[...\]) BEFORE inline math
     if remove_display_equations:
+        math_repl = f"\n\n{display_math_placeholder}\n\n" if display_math_placeholder else "\n\n"
         # If display math follows a colon at the end of a sentence, change the colon to a period
-        text = re.sub(r':[ \t]*\n[ \t]*\$\$[\s\S]*?\$\$', '.\n\n', text)
-        text = re.sub(r'\$\$[\s\S]*?\$\$', '\n\n', text)
-        text = re.sub(r':[ \t]*\n[ \t]*\\\[[\s\S]*?\\\]', '.\n\n', text)
-        text = re.sub(r'\\\[[\s\S]*?\\\]', '\n\n', text)
+        text = re.sub(r':[ \t]*\n[ \t]*\$\$[\s\S]*?\$\$', f'.{math_repl}', text)
+        text = re.sub(r'\$\$[\s\S]*?\$\$', math_repl, text)
+        text = re.sub(r':[ \t]*\n[ \t]*\\\[[\s\S]*?\\\]', f'.{math_repl}', text)
+        text = re.sub(r'\\\[[\s\S]*?\\\]', math_repl, text)
     else:
         def _spoken_display_math(m):
             spoken = clean_math_to_spoken(m.group(1))
@@ -902,6 +904,8 @@ def clean_bengali_math_plain(expr: str, strip_all: bool = False) -> str:
 def clean_bengali_markdown(
     markdown_text: str,
     strip_math: bool = False,
+    display_math_placeholder: Optional[str] = "অনুগ্রহ করে সমীকরণটি দেখুন।",
+    code_placeholder: Optional[str] = "অনুগ্রহ করে কোড উদাহরণটি দেখুন।",
 ) -> str:
     """
     Clean Bengali markdown or text for reading / TTS:
@@ -936,11 +940,12 @@ def clean_bengali_markdown(
     text = re.sub(r'!\[.*?\]\(.*?\)', '', text)
 
     # 4. Remove display equations ($$...$$ and \[...\])
+    math_repl = f"\n\n{display_math_placeholder}\n\n" if display_math_placeholder else "\n\n"
     # If display math follows a colon at the end of a line, change the colon to a Bengali Dari '।'
-    text = re.sub(r':[ \t]*\n[ \t]*\$\$[\s\S]*?\$\$', '।\n\n', text)
-    text = re.sub(r'\$\$[\s\S]*?\$\$', '\n\n', text)
-    text = re.sub(r':[ \t]*\n[ \t]*\\\[[\s\S]*?\\\]', '।\n\n', text)
-    text = re.sub(r'\\\[[\s\S]*?\\\]', '\n\n', text)
+    text = re.sub(r':[ \t]*\n[ \t]*\$\$[\s\S]*?\$\$', f'।{math_repl}', text)
+    text = re.sub(r'\$\$[\s\S]*?\$\$', math_repl, text)
+    text = re.sub(r':[ \t]*\n[ \t]*\\\[[\s\S]*?\\\]', f'।{math_repl}', text)
+    text = re.sub(r'\\\[[\s\S]*?\\\]', math_repl, text)
 
     # 5. Clean inline LaTeX math ($...$ and \(...\)) BEFORE tables
     def _repl_inline(m):
@@ -953,8 +958,9 @@ def clean_bengali_markdown(
     text = text.replace('$', '')
 
     # 6. Remove code blocks and diagrams
-    text = re.sub(r'```[\s\S]*?```', '', text)
-    text = re.sub(r'~~~[\s\S]*?~~~', '', text)
+    code_repl = f"\n\n{code_placeholder}\n\n" if code_placeholder else "\n\n"
+    text = re.sub(r'```[\s\S]*?```', code_repl, text)
+    text = re.sub(r'~~~[\s\S]*?~~~', code_repl, text)
 
     # 7. Convert Markdown Tables into spoken Bengali sentences
     def convert_bengali_table(table_block: str) -> str:
@@ -1136,4 +1142,80 @@ def clean_bengali_markdown(
             cleaned_paragraphs.extend(_split_bengali_para(para_text))
 
     return '\n\n'.join(cleaned_paragraphs)
+
+
+def clean_hindi_markdown(
+    markdown_text: str,
+    strip_math: bool = False,
+    display_math_placeholder: Optional[str] = "कृपया समीकरण देखें।",
+    code_placeholder: Optional[str] = "कृपया कोड उदाहरण देखें।",
+) -> str:
+    """
+    Clean Hindi markdown or text for reading / TTS:
+    - Normalizes line endings, strips YAML frontmatter, HTML tags, and comments
+    - Replaces display equations and code blocks with localized Hindi referral notices
+    - Normalizes punctuation and Devanagari Danda ('।')
+    """
+    # Use Bengali cleaner structure with Hindi defaults (both use Danda '।' and Indic phrasing)
+    cleaned = clean_bengali_markdown(
+        markdown_text=markdown_text,
+        strip_math=strip_math,
+        display_math_placeholder=display_math_placeholder,
+        code_placeholder=code_placeholder,
+    )
+    return cleaned
+
+
+def clean_document_for_tts(
+    text: str,
+    lang: Optional[str] = None,
+    keep_display_math: bool = False,
+    code_placeholder: Optional[str] = None,
+    display_math_placeholder: Optional[str] = None,
+) -> Tuple[str, str]:
+    """
+    Unified entry point for cleaning markdown/text documents across Bengali, Hindi, and English.
+    Returns: (cleaned_text, detected_language)
+    """
+    # Determine language
+    if lang:
+        det_lang = lang.lower()
+        if det_lang in ("bn", "bengali"):
+            det_lang = "bn"
+        elif det_lang in ("hi", "hindi"):
+            det_lang = "hi"
+        else:
+            det_lang = "en"
+    else:
+        bn_count = len(re.findall(r"[\u0980-\u09FF]", text))
+        hi_count = len(re.findall(r"[\u0900-\u097F]", text))
+        if bn_count > 15 and bn_count >= hi_count:
+            det_lang = "bn"
+        elif hi_count > 15:
+            det_lang = "hi"
+        else:
+            det_lang = "en"
+
+    if det_lang == "bn":
+        cleaned = clean_bengali_markdown(
+            text,
+            display_math_placeholder=display_math_placeholder or "অনুগ্রহ করে সমীকরণটি দেখুন।",
+            code_placeholder=code_placeholder or "অনুগ্রহ করে কোড উদাহরণটি দেখুন।",
+        )
+    elif det_lang == "hi":
+        cleaned = clean_hindi_markdown(
+            text,
+            display_math_placeholder=display_math_placeholder or "कृपया समीकरण देखें।",
+            code_placeholder=code_placeholder or "कृपया कोड उदाहरण देखें।",
+        )
+    else:
+        cleaned = clean_markdown_for_tts(
+            text,
+            remove_display_equations=not keep_display_math,
+            display_math_placeholder=display_math_placeholder or "Please refer to the equation.",
+            code_placeholder=code_placeholder or "Please refer to the code example.",
+        )
+
+    return cleaned, det_lang
+
 
