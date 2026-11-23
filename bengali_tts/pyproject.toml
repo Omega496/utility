@@ -1,0 +1,17 @@
+[project]
+name = "bengali-tts"
+version = "0.1.0"
+description = "Bengali Text and Markdown to Audio (.opus) using Indic-Speak via Google Colab CLI"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.scripts]
+make_bengali_audio = "bengali_tts.cli:main"
+make-bengali-audio = "bengali_tts.cli:main"
+bengali_tts = "bengali_tts.cli:main"
+bengali-tts = "bengali_tts.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.12.6,<0.14.0"]
+build-backend = "uv_build"

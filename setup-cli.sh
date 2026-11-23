@@ -20,6 +20,8 @@ COMMANDS=(
   "bengali-clean" "bengali_clean"
   # clean (unified Kaggle & Mobile/Syncthing sanitizer)
   "clean" "kaggle-clean" "kaggle_clean" "kagle_clean" "sync-clean" "sync_clean"
+  # bengali_tts (Indic-Speak via Colab)
+  "make_bengali_audio" "make-bengali-audio" "bengali-tts" "bengali_tts"
 )
 
 echo "Linking commands to $LOCAL_BIN ..."

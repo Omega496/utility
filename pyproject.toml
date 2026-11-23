@@ -20,4 +20,5 @@ members = [
     "make-pdf",
     "Make-audio",
     "clean",
+    "bengali_tts",
 ]

@@ -13,6 +13,7 @@ All utilities in this repository share a single [uv](https://docs.astral.sh/uv/)
 | **PDF Chapter Splitter** | [`pdf_chapter_splitter/`](pdf_chapter_splitter/) | Split book PDFs into chapters using embedded bookmarks or page ranges, formatted for Kaggle datasets. | `python pdf_chapter_splitter/split_chapters.py` |
 | **PDF Compiler** | [`make-pdf/`](make-pdf/) | Fast CLI tool and Python library to compile images, text, and markdown files into PDFs. | `image-to-pdf`, `txt-to-pdf`, `md-to-pdf` |
 | **Make Audio** | [`Make-audio/`](Make-audio/) | Convert Markdown, Text, or PDF files into natural plain-English audio using Kokoro-TTS or Google Colab. | `md-to-audio`, `clean-md`, `bengali-clean` |
+| **Bengali Audio** | [`bengali_tts/`](bengali_tts/) | Convert Bengali text and markdown files into speech (`.opus`) using Indic-Speak 3.3B via Google Colab GPU. | `make_bengali_audio`, `bengali-tts` |
 | **Kaggle Clean** | [`kaggle_clean/`](kaggle_clean/) | Fast CLI tool to rename and sanitize file names for Kaggle dataset uploads (POSIX compliant). | `kaggle_clean` |
 
 ---
@@ -70,7 +71,19 @@ md-to-audio notes.md --play
 md-to-audio document.pdf -v af_heart -o output.mp3
 ```
 
-### 4. Kaggle Clean (`kaggle_clean`)
+### 4. Bengali Audio (`bengali_tts`)
+```bash
+# Convert a single file to opus (default format)
+make_bengali_audio story.md
+
+# Convert all markdown and text files in current folder
+make_bengali_audio .
+
+# Convert all files in folder and subfolders recursively
+make_bengali_audio . -r
+```
+
+### 5. Kaggle Clean (`kaggle_clean`)
 ```bash
 # Sanitize all filenames in current directory for Kaggle uploads
 kaggle_clean .
