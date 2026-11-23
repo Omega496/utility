@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """
 Remote Worker Script for Bengali TTS (Indic-Speak) on Google Colab VM.
-Executes on the remote Colab GPU runtime:
-1. Verifies/installs required dependencies (transformers>=5, snac, soundfile, accelerate).
-2. Downloads and caches bodhan-ai/indic-speak model weights via Hugging Face.
-3. Loads TTS into GPU VRAM (persisting across kernel executions).
-4. Synthesizes Bengali speech per chunk, joins with natural acoustic pauses,
-   and encodes to target format (WAV, Opus, or MP3).
-5. Returns structured JSON metrics.
+Runs on the remote Colab GPU runtime:
+1. Authenticates with Hugging Face Hub using the provided user token.
+2. Ensures required dependencies (transformers>=5, snac, soundfile, accelerate).
+3. Downloads and caches bodhan-ai/indic-speak model weights.
+4. Loads TTS into GPU VRAM in bfloat16.
+5. Synthesizes Bengali speech with per-chunk checkpointing (resumable across runs!).
+6. Interleaves with natural acoustic pauses and encodes to Opus/WAV/MP3 via FFmpeg.
+7. Prints real-time chunk progress and emits structured JSON metrics.
 """
 
 import json
@@ -23,12 +24,18 @@ WORKDIR = "/content/bengali_tts"
 JOB_FILE = os.path.join(WORKDIR, "job.json")
 RESULT_FILE = os.path.join(WORKDIR, "result.json")
 MODEL_DIR = os.path.join(WORKDIR, "indic_speak_model")
+CHUNKS_DIR = os.path.join(WORKDIR, "chunks")
 
 os.makedirs(WORKDIR, exist_ok=True)
+os.makedirs(CHUNKS_DIR, exist_ok=True)
+
+# Prevent Colab from querying UI userdata secret vault (prevents 15s hang)
+os.environ["HF_HUB_DISABLE_IMPLICIT_TOKEN"] = "1"
+os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "0"
 
 
 def ensure_dependencies():
-    """Ensure transformers, snac, soundfile, and accelerate are installed on Colab."""
+    """Ensure transformers>=5, snac, soundfile, and accelerate are installed on Colab."""
     needed = []
     try:
         import transformers
@@ -55,14 +62,13 @@ def ensure_dependencies():
 
     if needed:
         print(f"[Remote Worker] Installing missing packages: {needed}...", flush=True)
-        # Use uv pip if available, otherwise regular pip
         has_uv = subprocess.run(["which", "uv"], capture_output=True).returncode == 0
         if has_uv:
             cmd = ["uv", "pip", "install", "--system"] + needed
         else:
             cmd = [sys.executable, "-m", "pip", "install", "-q"] + needed
         subprocess.check_call(cmd)
-        print("[Remote Worker] Dependencies successfully installed.", flush=True)
+        print("[Remote Worker] Dependencies installed.", flush=True)
 
 
 def load_model(model_id: str, hf_token: str = None):
@@ -74,9 +80,16 @@ def load_model(model_id: str, hf_token: str = None):
         print("[Remote Worker] Reusing cached TTS model in GPU memory.", flush=True)
         return _CACHED_TTS
 
-    from huggingface_hub import snapshot_download
+    from huggingface_hub import login, snapshot_download
 
-    # Check if model files already exist locally on VM
+    if hf_token:
+        try:
+            login(token=hf_token, add_to_git_credential=False)
+            os.environ["HF_TOKEN"] = hf_token
+            os.environ["HUGGING_FACE_HUB_TOKEN"] = hf_token
+        except Exception:
+            pass
+
     weight_file = os.path.join(MODEL_DIR, "model.safetensors")
     inference_file = os.path.join(MODEL_DIR, "inference.py")
 
@@ -95,27 +108,34 @@ def load_model(model_id: str, hf_token: str = None):
                 msg = (
                     "HUGGINGFACE_ACCESS_REQUIRED: Access to 'bodhan-ai/indic-speak' is restricted.\n"
                     "Please visit: https://huggingface.co/bodhan-ai/indic-speak\n"
-                    "Log in with your Hugging Face account and accept the license terms (it is auto-approved instantly).\n"
-                    "Then re-run this command."
+                    "Log in and accept the license terms (auto-approved instantly).\n"
+                    "Then re-run."
+                )
+                raise PermissionError(msg) from e
+            elif "401" in err_str:
+                msg = (
+                    "HUGGINGFACE_401: Unauthorized request to Hugging Face.\n"
+                    "Please ensure your Hugging Face token is provided."
                 )
                 raise PermissionError(msg) from e
             raise
 
-    # Add model directory to sys.path so vocos and inference can be imported
+    # Add model directory to sys.path
     if MODEL_DIR not in sys.path:
         sys.path.insert(0, MODEL_DIR)
 
     from inference import TTS
 
     print("[Remote Worker] Loading Indic-Speak model into GPU memory...", flush=True)
+    t0 = time.time()
     tts_instance = TTS(MODEL_DIR)
     _CACHED_TTS = tts_instance
-    print("[Remote Worker] Indic-Speak loaded and ready.", flush=True)
+    print(f"[Remote Worker] Indic-Speak loaded in {time.time() - t0:.1f}s and ready.", flush=True)
     return _CACHED_TTS
 
 
 def synthesize_job():
-    """Main worker entry point."""
+    """Main worker execution function."""
     start_time = time.time()
 
     if not os.path.exists(JOB_FILE):
@@ -140,7 +160,7 @@ def synthesize_job():
     top_k = int(job.get("top_k", 50))
     max_new_tokens = int(job.get("max_new_tokens", 2520))
     pause_duration = float(job.get("pause_duration", 0.25))
-    output_format = job.get("output_format", "wav").lower()
+    output_format = job.get("output_format", "opus").lower()
     remote_out_path = job.get("remote_out_path", os.path.join(WORKDIR, f"output.{output_format}"))
 
     if not chunks:
@@ -153,14 +173,30 @@ def synthesize_job():
     silence = np.zeros(pause_samples, dtype=np.float32)
 
     generated_segments = []
-    print(f"[Remote Worker] Synthesizing {len(chunks)} chunk(s) with speaker '{speaker}', style '{style}'...", flush=True)
+    total_chunks = len(chunks)
+    print(f"\n[Remote Worker] Starting synthesis of {total_chunks} chunk(s) (Speaker: {speaker}, Style: {style})...", flush=True)
 
     for idx, chunk in enumerate(chunks):
         chunk_text = chunk.strip()
         if not chunk_text:
             continue
 
-        print(f"  [{idx + 1}/{len(chunks)}] Synthesizing: {chunk_text[:50]}...", flush=True)
+        chunk_chk_file = os.path.join(CHUNKS_DIR, f"chunk_{idx:04d}.npy")
+
+        # Resume from checkpoint if already computed!
+        if os.path.exists(chunk_chk_file) and os.path.getsize(chunk_chk_file) > 0:
+            try:
+                wav_np = np.load(chunk_chk_file)
+                generated_segments.append(wav_np)
+                print(f"  [{idx + 1}/{total_chunks}] (Cached) Reused {len(wav_np)/sample_rate:.1f}s segment.", flush=True)
+                continue
+            except Exception:
+                pass
+
+        snippet = chunk_text[:45].replace("\n", " ")
+        print(f"  [{idx + 1}/{total_chunks}] Synthesizing ({len(chunk_text)} chars): \"{snippet}...\"", flush=True)
+        t_chunk_start = time.time()
+
         wav = tts(
             text=chunk_text,
             speaker=speaker,
@@ -180,12 +216,19 @@ def synthesize_job():
             wav_np = np.array(wav, dtype=np.float32)
 
         wav_np = np.squeeze(wav_np)
+
+        # Save checkpoint immediately
+        np.save(chunk_chk_file, wav_np)
         generated_segments.append(wav_np)
+
+        chunk_dur = len(wav_np) / sample_rate
+        chunk_time = time.time() - t_chunk_start
+        print(f"  [{idx + 1}/{total_chunks}] ✔ Done in {chunk_time:.1f}s ({chunk_dur:.1f}s audio)", flush=True)
 
     if not generated_segments:
         raise ValueError("Synthesis yielded no audio output.")
 
-    # Interleave with silence
+    print("\n[Remote Worker] Concatenating audio segments...", flush=True)
     combined_audio = []
     for i, seg in enumerate(generated_segments):
         combined_audio.append(seg)
@@ -203,20 +246,14 @@ def synthesize_job():
     temp_wav = os.path.join(WORKDIR, "temp_render.wav")
     sf.write(temp_wav, full_audio, samplerate=sample_rate)
 
-    # Convert to desired output format
-    if output_format == "wav":
-        if os.path.exists(remote_out_path):
-            os.remove(remote_out_path)
-        os.rename(temp_wav, remote_out_path)
-    elif output_format == "opus":
+    print(f"[Remote Worker] Encoding to target format: {output_format}...", flush=True)
+    if output_format == "opus":
         cmd = [
             "ffmpeg", "-y", "-i", temp_wav,
-            "-c:a", "libopus", "-b:a", "32k", "-vbr", "on",
+            "-c:a", "libopus", "-b:a", "24k", "-vbr", "on",
             remote_out_path
         ]
         subprocess.run(cmd, check=True, capture_output=True)
-        if os.path.exists(temp_wav):
-            os.remove(temp_wav)
     elif output_format == "mp3":
         cmd = [
             "ffmpeg", "-y", "-i", temp_wav,
@@ -224,13 +261,20 @@ def synthesize_job():
             remote_out_path
         ]
         subprocess.run(cmd, check=True, capture_output=True)
-        if os.path.exists(temp_wav):
-            os.remove(temp_wav)
-    else:
-        # Default fallback: keep as WAV
+    else:  # wav
         if os.path.exists(remote_out_path):
             os.remove(remote_out_path)
         os.rename(temp_wav, remote_out_path)
+
+    if os.path.exists(temp_wav) and output_format != "wav":
+        os.remove(temp_wav)
+
+    # Clean up chunk checkpoints once audio is fully built
+    for f in os.listdir(CHUNKS_DIR):
+        try:
+            os.remove(os.path.join(CHUNKS_DIR, f))
+        except Exception:
+            pass
 
     audio_duration = float(len(full_audio) / sample_rate)
     elapsed_time = float(time.time() - start_time)
@@ -241,7 +285,7 @@ def synthesize_job():
         "format": output_format,
         "duration_seconds": round(audio_duration, 2),
         "elapsed_seconds": round(elapsed_time, 2),
-        "chunks_processed": len(chunks),
+        "chunks_processed": total_chunks,
         "speaker": speaker,
         "style": style,
         "sample_rate": sample_rate,

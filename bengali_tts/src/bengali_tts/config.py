@@ -71,4 +71,4 @@ DEFAULT_TOP_P = 0.9
 DEFAULT_TOP_K = 50
 DEFAULT_MAX_NEW_TOKENS = 2520
 DEFAULT_PAUSE_DURATION = 0.25  # seconds between chunks
-MAX_CHUNK_LENGTH = 200  # maximum character count per text slice
+MAX_CHUNK_LENGTH = 350  # maximum character count per text slice (optimal for ~20s speech)

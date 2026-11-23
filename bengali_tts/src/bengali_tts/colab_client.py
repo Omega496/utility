@@ -260,20 +260,48 @@ with open('{REMOTE_JOB_FILE}', 'w', encoding='utf-8') as f:
             err = res_upload.stderr or res_upload.stdout
             raise ColabBengaliTTSError(f"Failed to stage job on Colab VM:\n{err}")
 
-        # 5. Execute remote worker script
-        self.log("Running speech synthesis on Colab GPU...")
-        res_exec = subprocess.run(
-            [
-                "colab", "exec",
-                "-s", self.session_name,
-                "-f", str(self.worker_script),
-                "--timeout", str(self.timeout),
-            ],
-            capture_output=True,
-            text=True,
-        )
+        # 5. Execute remote worker script with live streaming & dynamic timeout
+        exec_timeout = max(int(self.timeout), len(chunks) * 120)
+        self.log(f"Running speech synthesis on Colab GPU (Timeout: {exec_timeout}s)...")
 
-        full_output = (res_exec.stdout or "") + "\n" + (res_exec.stderr or "")
+        cmd_exec = [
+            "colab", "exec",
+            "-s", self.session_name,
+            "-f", str(self.worker_script),
+            "--timeout", str(exec_timeout),
+        ]
+
+        full_output_lines = []
+        result_payload = None
+
+        try:
+            proc = subprocess.Popen(
+                cmd_exec,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+                universal_newlines=True,
+            )
+
+            for line in proc.stdout:
+                full_output_lines.append(line)
+                line_str = line.strip()
+                if line_str.startswith("__BENGALI_TTS_RESULT__:"):
+                    json_part = line_str[len("__BENGALI_TTS_RESULT__:") :]
+                    try:
+                        result_payload = json.loads(json_part)
+                    except Exception:
+                        pass
+                else:
+                    if line_str:
+                        print(f"  {line_str}", flush=True)
+
+            proc.wait(timeout=exec_timeout + 60)
+        except Exception as e:
+            raise ColabBengaliTTSError(f"Execution error on Colab: {e}")
+
+        full_output = "".join(full_output_lines)
 
         # Check for Hugging Face access restriction
         if "HUGGINGFACE_ACCESS_REQUIRED" in full_output or ("403" in full_output and "restricted" in full_output.lower()):
@@ -289,23 +317,12 @@ with open('{REMOTE_JOB_FILE}', 'w', encoding='utf-8') as f:
                 "  2. Make sure you are signed in to Hugging Face.\n"
                 "  3. Fill in the brief access request form and click 'Agree and request access'.\n"
                 "     (Access is granted automatically and immediately upon submission).\n\n"
-                "  4. Re-run your bengali-tts command.\n"
+                "  4. Re-run your make_bengali_audio command.\n"
                 "================================================================================="
             )
             raise HuggingFaceAccessError(msg)
 
-        # Parse worker output
-        result_payload = None
-        for line in full_output.splitlines():
-            line_str = line.strip()
-            if line_str.startswith("__BENGALI_TTS_RESULT__:"):
-                json_part = line_str[len("__BENGALI_TTS_RESULT__:") :]
-                try:
-                    result_payload = json.loads(json_part)
-                except Exception:
-                    pass
-
-        if res_exec.returncode != 0 or not result_payload or not result_payload.get("success"):
+        if proc.returncode != 0 or not result_payload or not result_payload.get("success"):
             err_details = result_payload.get("error") if result_payload else full_output.strip()
             raise ColabBengaliTTSError(f"Remote synthesis failed:\n{err_details}")
 
