@@ -211,6 +211,28 @@ make_bengali_audio doc.md --temp 0.5
 
 ---
 
+## Running on Kaggle Dual GPUs (2x Faster Synthesis)
+
+If you prefer running in Kaggle or have large book chapters, use the included **Dual-GPU Kaggle Notebook** (`bengali_tts_kaggle.ipynb`).
+
+### Features:
+- **Dual T4 Acceleration:** Automatically spins up workers on both `cuda:0` and `cuda:1`, synthesizing text chunks in parallel for an instant **2x speedup**.
+- **Resumable Checkpoints:** Saves individual chunk waveforms (`chunk_0000.npy`, etc.). If interrupted, rerunning immediately resumes without repeating finished chunks.
+- **Batch Processing:** Converts all `.txt` and `.md` files uploaded into `/kaggle/input` or `/kaggle/working`.
+- **1-Click ZIP Download:** Packages all generated `.opus` audio into `bengali_audio_output.zip`.
+
+### How to Run on Kaggle:
+1. Open your Kaggle notebook: [https://www.kaggle.com/code/omega496/bengali-tts](https://www.kaggle.com/code/omega496/bengali-tts)
+2. In the right sidebar:
+   - **Accelerator:** Select **GPU T4 x 2**
+   - **Internet:** Set to **ON**
+3. Import the updated `bengali_tts_kaggle.ipynb` (`File` ➡️ `Upload Notebook`).
+4. (Recommended) Add your Hugging Face token in `Add-ons` ➡️ `Secrets` with Key: `HF_TOKEN`.
+5. Click **Run All**. All uploaded Bengali documents will be converted to high quality `.opus` audio.
+
+
+---
+
 ## Troubleshooting
 
 ### Error: `🔒 HUGGING FACE REPOSITORY ACCESS REQUIRED`
